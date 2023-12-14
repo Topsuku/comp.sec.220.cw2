@@ -1,0 +1,114 @@
+from Crypto.PublicKey import ElGamal
+from Crypto.Random import get_random_bytes
+from Crypto.Util.number import GCD
+
+import random
+import time
+
+
+total_noise_time = 0
+total_key_generation_time = 0
+total_encryption_time = 0
+
+# class for the binary tree.
+class TreeNode:
+    def __init__(self, value, public_key=None, private_key=None):
+        self.value = value
+        self.left = None
+        self.right = None
+        self.public_key = public_key
+        self.private_key = private_key
+
+# generate the binary tree with random values
+def generate_binary_tree(n):
+    if n <= 0:
+        return None
+    root_value = random.uniform(0, 1)
+    root = TreeNode(root_value)
+    root.left = generate_binary_tree(n // 2)
+    root.right = generate_binary_tree(n // 2)
+    return root
+
+# generates the elgamal keys.
+def generate_elgamal_keys():
+    key = ElGamal.generate(1024, get_random_bytes)
+    while True:
+        k = random.SystemRandom().randint(1, key.p-1)
+        if GCD(k, key.p-1) == 1:
+            break
+    return key, key.publickey(), k
+
+# this function encrypts ( does not work)
+def elgamal_encrypt(public_key, m, k):
+    p, g, y = public_key.p, public_key.g, public_key.y
+    c1 = pow(g, k, p)
+    c2 = (m * pow(y, k, p)) % p
+    return (c1, c2)
+
+# this function then adds the noise and encrypts.
+def embed_noise_and_encrypt(node):
+    global total_noise_time, total_key_generation_time, total_encryption_time
+    if node is None:
+        return None
+
+    # noise
+    start_noise_time = time.perf_counter()
+    noise = random.uniform(-5, 5)
+    node.value += noise
+    end_noise_time = time.perf_counter()
+    total_noise_time += end_noise_time - start_noise_time
+
+    # ElGamal key pair
+    start_key_generation_time = time.perf_counter()
+    private_key, public_key, k = generate_elgamal_keys()
+    node.public_key = public_key
+    node.private_key = private_key
+    end_key_generation_time = time.perf_counter()
+    total_key_generation_time += end_key_generation_time - start_key_generation_time
+
+    # encrypts
+    start_encryption_time = time.perf_counter()
+    scaled_value = int(node.value * 1000)
+    node.value = elgamal_encrypt(node.public_key, scaled_value, k)
+    end_encryption_time = time.perf_counter()
+    total_encryption_time += end_encryption_time - start_encryption_time
+
+    return node
+
+# This processes the tree and encrypts it (if it works)
+def process_tree(root):
+    if root is None:
+        return None
+    root = embed_noise_and_encrypt(root)
+    root.left = process_tree(root.left)
+    root.right = process_tree(root.right)
+    return root
+
+# Counts the amount of nodes in the tree.
+def count_nodes(root):
+    if root is None:
+        return 0
+    return 1 + count_nodes(root.left) + count_nodes(root.right)
+
+n = 3  # Adjust 'n' to get the desired number of leaves 5 = 32, 6 = 64 etc
+num_runs = 10 # number of runs
+total_elapsed_time = 0
+
+for _ in range(num_runs):
+    start_time = time.time()  # Record the start time
+    binary_tree = generate_binary_tree(2 ** n - 1)  # Generate binary tree with a size of 100
+
+    processed_tree = process_tree(binary_tree)
+
+    end_time = time.time()  # Record the end time
+    
+    elapsed_time = end_time - start_time  # calculate the elapsed time in seconds
+    total_elapsed_time += elapsed_time # calculate the average elapsed time
+  
+
+# prints the timer results. 
+print(f"Average elapsed time to generate dataset ({num_runs} runs): {total_elapsed_time} seconds")  
+print(f"Total time for adding noise: {total_noise_time:.6f} seconds")
+print(f"Total time for key generation: {total_key_generation_time:.6f} seconds")
+print(f"Total time for encryption: {total_encryption_time:.6f} seconds")
+
